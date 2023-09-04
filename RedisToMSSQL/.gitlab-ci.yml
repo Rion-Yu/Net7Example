@@ -1,0 +1,87 @@
+image: docker:latest
+
+variables:
+  DOCKER_DRIVER: overlay2
+  K8S_TRIGGER: glptt-98dd409562ceb1baf30495b39637b19ab72ff63a
+
+services:
+  - docker:dind
+
+stages:
+  - build
+#   - deploy
+
+build-image:
+  stage: build
+  tags:
+    - mark-builder
+  before_script:
+    - echo "we work at branch:${CI_COMMIT_REF_NAME}"
+    - git checkout "${CI_COMMIT_REF_NAME}" && git pull
+    - echo "target container registry host:$CI_REGISTRY"
+    - echo "glpat-aQET5A_PwPpFRQSEnKf5" | sudo docker login -u "container_registry" --password-stdin "$CI_REGISTRY"
+    - VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo 'latest')
+    - PROJECT_NAME=$(echo "${CI_PROJECT_NAME}" | tr '[:upper:]' '[:lower:]')
+    - PROJECT_NAME_WITH_HYPHEN=$(echo "${PROJECT_NAME}" | sed 's/ /-/g')
+    - sed -i.bak "s/environment =.*/environment = \"Beta\";/g" ./Program.cs
+  script:
+    - sudo docker build --pull -t "$CI_REGISTRY_IMAGE:$VERSION" -f Dockerfile .
+    - sudo docker images "$CI_REGISTRY_IMAGE:$VERSION" 
+    - sudo docker push "$CI_REGISTRY_IMAGE:$VERSION"
+    - sudo docker system prune -a 3>&2 2>/dev/null 
+  except:
+    - dev
+  only:
+    refs:
+    - main
+    - master
+    # variables:
+    #   - $CI_COMMIT_MESSAGE =~ /demo/
+  when: manual
+
+build-dev-image:
+  stage: build
+  tags:
+    - mark-builder
+  before_script:
+    - echo "we work at branch:${CI_COMMIT_REF_NAME}"
+    - git checkout "${CI_COMMIT_REF_NAME}" && git pull
+    - echo "target container registry host:$CI_REGISTRY"
+    - echo "glpat-aQET5A_PwPpFRQSEnKf5" | sudo docker login -u "container_registry" --password-stdin "$CI_REGISTRY"
+    - VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo 'latest')
+    - PROJECT_NAME=$(echo "${CI_PROJECT_NAME}" | tr '[:upper:]' '[:lower:]')
+    - PROJECT_NAME_WITH_HYPHEN=$(echo "${PROJECT_NAME}" | sed 's/ /-/g')
+  script:
+    - sudo docker build --pull -t "$CI_REGISTRY_IMAGE:dev-$VERSION" -f Dockerfile .
+    - sudo docker images "$CI_REGISTRY_IMAGE:dev-$VERSION" 
+    - sudo docker push "$CI_REGISTRY_IMAGE:dev-$VERSION"
+    - sudo docker system prune -a 3>&2 2>/dev/null 
+  except:
+    - main
+    - master
+  only:
+    refs:
+    - dev
+    # variables:
+    #   - $CI_COMMIT_MESSAGE =~ /demo/
+  when: manual
+
+# deploy-image:
+#   stage:
+#     deploy
+#   tags:
+#     - testhost
+#   before_script:
+#     - echo "target container registry host:$CI_REGISTRY"
+#     - echo "glpat-aQET5A_PwPpFRQSEnKf5" | sudo docker login -u "container_registry" --password-stdin "$CI_REGISTRY"
+#     - VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')
+#   script:
+#     - sudo docker pull "$CI_REGISTRY_IMAGE:$VERSION"
+#     - "curl -X POST --fail -F token=${K8S_TRIGGER} -F ref=${REF_NAME} -F variables[PROJECT_NAME]=${PROJECT_NAME_WITH_HYPHEN} -F variables[PROJECT_CONTAINER_REGISTRY]=${CI_REGISTRY_IMAGE} -F variables[PROJECT_VERSION]=${VERSION} https://gitlab.okymo.com.tw/api/v4/projects/4/trigger/pipeline"
+#   except:
+#     - dev
+#   only:
+#     refs:
+#     - master
+#   when: manual
+
